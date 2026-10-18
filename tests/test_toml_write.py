@@ -3,8 +3,8 @@
 曾经的缺陷：_block_span 返回行号，toml_write 却按字符偏移切片，
 更新一个已存在的 [mcp_servers.x] 会把文件从第 N 个字符处截断。
 """
+import atexit
 import io
-import json
 import os
 import sys
 import tempfile
@@ -16,6 +16,21 @@ import tomllib  # noqa: E402
 
 NL = chr(10)
 FAIL = []
+TEMP_DIRS = []
+
+
+def temp_dir(prefix):
+    td = tempfile.TemporaryDirectory(prefix=prefix)
+    TEMP_DIRS.append(td)
+    return td.name
+
+
+def cleanup_temp_dirs():
+    while TEMP_DIRS:
+        TEMP_DIRS.pop().cleanup()
+
+
+atexit.register(cleanup_temp_dirs)
 
 
 def check(cond, label):
@@ -55,7 +70,7 @@ def parse(path):
 
 
 def fresh():
-    d = tempfile.mkdtemp(prefix="toml-")
+    d = temp_dir("toml-")
     p = os.path.join(d, "config.toml")
     io.open(p, "w", encoding="utf-8").write(BASE)
     return p
@@ -105,7 +120,7 @@ check(ok and msg == "无变化", "幂等: " + msg)
 check(io.open(p, encoding="utf-8").read() == before, "文件未变")
 
 print("7) 没有 [mcp_servers] 头时自动补建")
-d2 = tempfile.mkdtemp(prefix="toml2-")
+d2 = temp_dir("toml2-")
 p2 = os.path.join(d2, "config.toml")
 io.open(p2, "w", encoding="utf-8").write('model = "m"' + NL + NL + '[desktop]' + NL + 'x = 1' + NL)
 ok, msg = mcp_hub.toml_write(p2, "first", {"type": "stdio", "command": "c"})
@@ -146,6 +161,7 @@ finally:
     M.toml_value = orig_val
 
 print()
+cleanup_temp_dirs()
 if FAIL:
     print("FAILED %d:" % len(FAIL))
     for f in FAIL:

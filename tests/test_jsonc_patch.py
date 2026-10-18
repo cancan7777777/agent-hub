@@ -112,26 +112,25 @@ except Exception as e:
     check(False, "未抛异常（实际抛出 %s）" % type(e).__name__)
 
 print("11) mcp_hub 端到端（临时文件）")
-import tempfile, shutil
-d = tempfile.mkdtemp(prefix="hubtest-")
-p = os.path.join(d, "opencode.jsonc")
-open(p, "w", encoding="utf-8").write(BASE)
-std = {"type": "stdio", "command": "npx", "args": ["@playwright/mcp@latest"]}
-okw, msgw = mcp_hub.write_entry(p, "opencode", "mcp", "playwright", std, agent_id="opencode")
-check(okw, "write_entry ok: " + msgw)
-off, msgo = mcp_hub.write_entry(p, "opencode", "mcp", "playwright", std, on=False, agent_id="opencode")
-check(off, "停用 ok: " + msgo)
-body = open(p, encoding="utf-8").read()
-check(has_comments(body), "落盘后注释仍在")
-check("jira" in body, "原有 jira 未被破坏")
-ent = mcp_hub.read_entries(p, "opencode", "mcp")
-check(sorted(ent) == ["jira", "playwright"], "读回两个成员")
-check(mcp_hub.entry_is_off("opencode", ent["playwright"]), "停用状态可读回")
-back = mcp_hub.std_from_entry("opencode", ent["playwright"])
-check(back.get("command") == "npx" and back.get("args") == ["@playwright/mcp@latest"], "标准条目往返一致")
-okd, msgd = mcp_hub.write_entry(p, "opencode", "mcp", "playwright", None, agent_id="opencode")
-check(okd and sorted(mcp_hub.read_entries(p, "opencode", "mcp")) == ["jira"], "删除生效: " + msgd)
-shutil.rmtree(d, ignore_errors=True)
+import tempfile
+with tempfile.TemporaryDirectory(prefix="hubtest-") as d:
+    p = os.path.join(d, "opencode.jsonc")
+    open(p, "w", encoding="utf-8").write(BASE)
+    std = {"type": "stdio", "command": "npx", "args": ["@playwright/mcp@latest"]}
+    okw, msgw = mcp_hub.write_entry(p, "opencode", "mcp", "playwright", std, agent_id="opencode")
+    check(okw, "write_entry ok: " + msgw)
+    off, msgo = mcp_hub.write_entry(p, "opencode", "mcp", "playwright", std, on=False, agent_id="opencode")
+    check(off, "停用 ok: " + msgo)
+    body = open(p, encoding="utf-8").read()
+    check(has_comments(body), "落盘后注释仍在")
+    check("jira" in body, "原有 jira 未被破坏")
+    ent = mcp_hub.read_entries(p, "opencode", "mcp")
+    check(sorted(ent) == ["jira", "playwright"], "读回两个成员")
+    check(mcp_hub.entry_is_off("opencode", ent["playwright"]), "停用状态可读回")
+    back = mcp_hub.std_from_entry("opencode", ent["playwright"])
+    check(back.get("command") == "npx" and back.get("args") == ["@playwright/mcp@latest"], "标准条目往返一致")
+    okd, msgd = mcp_hub.write_entry(p, "opencode", "mcp", "playwright", None, agent_id="opencode")
+    check(okd and sorted(mcp_hub.read_entries(p, "opencode", "mcp")) == ["jira"], "删除生效: " + msgd)
 
 print()
 if FAIL:

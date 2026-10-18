@@ -13,6 +13,9 @@ import zipfile
 
 NL = chr(10)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(REPO, "core"))
+import fsutil  # noqa: E402
+
 FAIL = []
 
 
@@ -35,7 +38,7 @@ def build_env():
     fake = tempfile.mkdtemp(prefix="hubsec-")
     hub = os.path.join(fake, "hub")
     shutil.copytree(REPO, hub, ignore=shutil.ignore_patterns(
-        "__pycache__", "mcp.json", "state.json", "fingerprint.cache.json"))
+        "__pycache__", ".git", "data", "logs"))
     home = os.path.join(fake, "home")
     codex = os.path.join(home, ".codex", "skills")
     cursor = os.path.join(home, ".cursor", "skills")
@@ -47,6 +50,13 @@ def build_env():
     io.open(os.path.join(home, ".codex", "config.toml"), "w", encoding="utf-8").write(
         "model = " + chr(34) + "m" + chr(34) + NL)
     return fake, hub, home, dict(codex=codex, cursor=cursor, trae=trae)
+
+
+def cleanup_env(path):
+    for _ in range(5):
+        if fsutil.remove_path(path):
+            return
+        time.sleep(0.4)
 
 
 def start(hub, home, port):
@@ -119,7 +129,7 @@ finally:
         proc.communicate(timeout=8)
     except Exception:
         proc.kill()
-    shutil.rmtree(fake, ignore_errors=True)
+    cleanup_env(fake)
 
 print()
 print("=== B) 内置技能：原目录保留实体，仅作为分发来源 ===")
@@ -148,7 +158,7 @@ finally:
         proc.communicate(timeout=8)
     except Exception:
         proc.kill()
-    shutil.rmtree(fake, ignore_errors=True)
+    cleanup_env(fake)
 
 print()
 print("=== C) 装上时覆盖实体副本也要备份 ===")
@@ -180,7 +190,7 @@ finally:
         proc.communicate(timeout=8)
     except Exception:
         proc.kill()
-    shutil.rmtree(fake, ignore_errors=True)
+    cleanup_env(fake)
 
 print()
 if FAIL:
