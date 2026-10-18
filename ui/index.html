@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Agent Hub · 技能与 MCP 统一控制台</title>
+<link rel="stylesheet" href="./hub.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e2a33c'/><circle cx='12' cy='12' r='5' fill='%23080b13'/><circle cx='22' cy='21' r='3' fill='%23080b13' opacity='.6'/></svg>">
+</head>
+<body>
+<div id="root">
+  <div class="app">
+    <aside class="rail">
+      <div class="mark">
+        <div class="mark-glyph"></div>
+        <div class="mark-txt"><b>AGENT&nbsp;HUB</b><span>single source</span></div>
+      </div>
+      <div class="nav-label">分发中心</div>
+      <nav class="nav" id="nav"></nav>
+      <div class="rail-foot">
+        真源 · <code id="foot-canon">—</code><br>
+        <span id="foot-state">就绪</span>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div style="min-width:0">
+          <h1 class="title" id="title">—</h1>
+          <p class="sub" id="subtitle">—</p>
+        </div>
+        <div class="topbar-actions" id="actions"></div>
+      </header>
+      <div class="scroll" id="view"></div>
+    </main>
+  </div>
+  <div class="toasts" id="toasts"></div>
+  <div id="overlay"></div>
+</div>
+<script src="./app.js"></script>
+</body>
+</html>

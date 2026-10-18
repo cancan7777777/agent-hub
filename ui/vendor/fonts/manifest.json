@@ -1,0 +1,42 @@
+[
+  {
+    "family": "Space Grotesk",
+    "weight": "400",
+    "file": "spacegrotesk-400.woff2",
+    "bytes": 13388,
+    "md5": "1a806675790e",
+    "source_url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mQoQDjQSkFtoMM3T6r8E7mF71Q-gOoraIAEj7oUXskPMA.woff2"
+  },
+  {
+    "family": "Space Grotesk",
+    "weight": "500",
+    "file": "spacegrotesk-500.woff2",
+    "bytes": 13312,
+    "md5": "ab4861869c91",
+    "source_url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mQoQDjQSkFtoMM3T6r8E7mF71Q-gOoraIAEj7aUXskPMA.woff2"
+  },
+  {
+    "family": "Space Grotesk",
+    "weight": "700",
+    "file": "spacegrotesk-700.woff2",
+    "bytes": 12840,
+    "md5": "f9e147a59a93",
+    "source_url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mQoQDjQSkFtoMM3T6r8E7mF71Q-gOoraIAEj4PVnskPMA.woff2"
+  },
+  {
+    "family": "JetBrains Mono",
+    "weight": "400",
+    "file": "jetbrainsmono-400.woff2",
+    "bytes": 21168,
+    "md5": "caf0dfde4e44",
+    "source_url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOV.woff2"
+  },
+  {
+    "family": "JetBrains Mono",
+    "weight": "500",
+    "file": "jetbrainsmono-500.woff2",
+    "bytes": 21832,
+    "md5": "a21e038a03f7",
+    "source_url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8-qxTOlOV.woff2"
+  }
+]
