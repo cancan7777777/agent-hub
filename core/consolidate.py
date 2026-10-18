@@ -256,6 +256,12 @@ def host_one(name: str, force: bool = False) -> dict:
 
     if link_kind(AGENTS_HOME) == "real":
         consider("agents_home", AGENTS_HOME, os.path.join(AGENTS_HOME, name))
+    for a in getattr(registry, "SOURCES", []):
+        for sd in a["skills"]:
+            base = os.path.abspath(sd["path"])
+            if base == os.path.abspath(registry.CANONICAL):
+                continue
+            consider(a["id"], base, os.path.join(base, name), keep=True)
     for a in registry.AGENTS:
         for sd in a["skills"]:
             base = os.path.abspath(sd["path"])

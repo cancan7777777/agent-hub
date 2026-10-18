@@ -33,13 +33,13 @@ AGENTS = [
                   dict(path=os.path.join(USERPROFILE, ".codex", "config.toml"), kind="toml_plugins")],
          note="原生读取 .codex\\skills 与 .agents\\skills 两处。"),
 
-    dict(id="claude", name="Claude Code", vendor="Anthropic", color="#d97757", verified=True,
+    dict(id="claude", name="Claude Code（CLI）", vendor="Anthropic", color="#d97757", verified=True,
          icon='<path d="M12 3c2.5 3 4 5.5 4 8a4 4 0 0 1-8 0c0-2.5 1.5-5 4-8Z"/><path d="M9 21h6"/>',
          skills=[dict(path=os.path.join(USERPROFILE, ".claude", "skills"), role="agent")],
          mcp=dict(path=os.path.join(USERPROFILE, ".claude.json"), format="json", key="mcpServers"),
          plugins=[dict(path=os.path.join(USERPROFILE, ".claude", "plugins", "installed_plugins.json"), kind="claude_json")],
-         note="全局 mcpServers 位于 ~/.claude.json 顶层。"),
-
+         note="终端里的 claude 命令。技能读 ~/.claude/skills 与 ~/.agents/skills；"
+              "与 Claude 桌面版互不可见。"),
     dict(id="cursor", name="Cursor", vendor="Anysphere", color="#5b8def", verified=False,
          icon='<path d="M4 3l14 8-6 1.6L9.6 19Z"/>',
          skills=[dict(path=os.path.join(USERPROFILE, ".cursor", "skills"), role="agent")],
@@ -120,6 +120,48 @@ SOURCE_ONLY = dict(id="ccswitch", name="CC Switch（技能来源）", vendor="fa
                    verified=True, read_only=True,
                    skills=[dict(path=os.path.join(USERPROFILE, ".cc-switch", "skills"), role="source")],
                    mcp=None, plugins=[], note="只读来源，不写入，避免其自动同步打散联接。")
+
+
+def _claude_desktop_skill_dirs():
+    r"""Claude 桌面版（local agent mode）的技能目录。
+
+    实际路径含两个易变 UUID 段：
+      %LOCALAPPDATA%\<Root>\local-agent-mode-sessions\skills-plugin\<固定>\<会话>\skills
+    所以用通配发现而不是写死。整个目录由 app 托管（含 manifest.json 与
+    .claude-plugin），注册为只读来源，不向其中写入。
+    """
+    import glob
+    base = os.environ.get("LOCALAPPDATA") or os.path.join(USERPROFILE, "AppData", "Local")
+    out = []
+    for root in ("Claude-3p", "Claude"):
+        pat = os.path.join(base, root, "local-agent-mode-sessions",
+                           "skills-plugin", "*", "*", "skills")
+        for p in sorted(glob.glob(pat)):
+            if os.path.isdir(p):
+                out.append(p)
+    return out
+
+
+CLAUDE_DESKTOP = dict(
+    id="claude-desktop", name="Claude 桌面版", vendor="Anthropic", color="#c15b3c",
+    icon='<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    verified=True, read_only=True,
+    skills=[dict(path=p, role="source") for p in _claude_desktop_skill_dirs()],
+    mcp=None, plugins=[],
+    note="桌面版技能由 app 托管（路径含会话 UUID，不写入）；"
+         "与 Claude Code 的 ~/.claude/skills 互不可见。")
+
+def refresh_desktop_sources():
+    """桌面端技能路径含会话 UUID，会随会话变化；每次扫描前重新发现。"""
+    dirs = _claude_desktop_skill_dirs()
+    cur = [s["path"] for s in CLAUDE_DESKTOP["skills"]]
+    if dirs != cur:
+        CLAUDE_DESKTOP["skills"] = [dict(path=p, role="source") for p in dirs]
+    return CLAUDE_DESKTOP["skills"]
+
+
+# 只读来源：会被扫描展示，但不参与分发与写入
+SOURCES = [SOURCE_ONLY, CLAUDE_DESKTOP]
 
 
 def load_state() -> dict:

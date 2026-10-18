@@ -28,7 +28,7 @@ def collect_watch_targets():
     dirs = [registry.CANONICAL, os.path.join(registry.CANONICAL, "_hub_disabled")]
     global _WATCHED_MCP, _WATCHED_PLUGINS
     _WATCHED_MCP, _WATCHED_PLUGINS = [], []
-    for a in registry.AGENTS + [registry.SOURCE_ONLY]:
+    for a in registry.AGENTS + registry.SOURCES:
         for sd in a["skills"]:
             dirs.append(os.path.abspath(sd["path"]))
         spec = a.get("mcp") or {}

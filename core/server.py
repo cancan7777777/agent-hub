@@ -90,7 +90,7 @@ def build_state(force=False, since=0.0) -> dict:
         view_by_agent.setdefault(v["agent"], []).append(v)
 
     agent_meta = []
-    for a in registry.AGENTS + [registry.SOURCE_ONLY]:
+    for a in registry.AGENTS + registry.SOURCES:
         dirs = []
         for v in view_by_agent.get(a["id"], []):
             k = link_kind(os.path.abspath(v["dir"]))
@@ -190,7 +190,7 @@ def skill_row(name: str) -> dict:
     ck = link_kind(canon)
     chash = dir_fingerprint(canon)["hash"] if ck == "real" and os.path.isdir(canon) else None
     locations, by_agent = {}, {}
-    for a in registry.AGENTS + [registry.SOURCE_ONLY]:
+    for a in registry.AGENTS + registry.SOURCES:
         for i, sd in enumerate(a["skills"]):
             base = os.path.abspath(sd["path"])
             tgt = os.path.join(base, name)
@@ -210,7 +210,7 @@ def skill_row(name: str) -> dict:
                                                    read_only=bool(a.get("read_only"))))
             ag["kinds"].append(k); ag["hashes"].append(fp["hash"]); ag["dirs"].append(base)
     protected_set = set()
-    for a in registry.AGENTS + [registry.SOURCE_ONLY]:
+    for a in registry.AGENTS + registry.SOURCES:
         for sd in a["skills"]:
             for pn in sd.get("protect", []):
                 protected_set.add((a["id"], pn))

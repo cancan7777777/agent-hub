@@ -41,8 +41,9 @@ def scan() -> dict:
     for name, path in list_skill_dirs(registry.CANONICAL):
         canon[name] = entry_info("canonical", path, dir_fingerprint(path))
 
+    registry.refresh_desktop_sources()   # 桌面端路径含会话 UUID，需每次重新发现
     views = []  # 每个 (agent, 目录) 一个视图
-    for a in registry.AGENTS + [registry.SOURCE_ONLY]:
+    for a in registry.AGENTS + registry.SOURCES:
         for i, sd in enumerate(a["skills"]):
             p = os.path.abspath(sd["path"])
             views.append(dict(

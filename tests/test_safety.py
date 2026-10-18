@@ -12,6 +12,7 @@ import urllib.request
 import zipfile
 
 NL = chr(10)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAIL = []
 
 
@@ -33,7 +34,7 @@ def build_env():
     """造一个隔离的假 HOME + 独立的 hub 副本，绝不碰真实配置。"""
     fake = tempfile.mkdtemp(prefix="hubsec-")
     hub = os.path.join(fake, "hub")
-    shutil.copytree(r"D:\agent-hub", hub, ignore=shutil.ignore_patterns(
+    shutil.copytree(REPO, hub, ignore=shutil.ignore_patterns(
         "__pycache__", "mcp.json", "state.json", "fingerprint.cache.json"))
     home = os.path.join(fake, "home")
     codex = os.path.join(home, ".codex", "skills")
@@ -52,6 +53,9 @@ def start(hub, home, port):
     env = dict(os.environ)
     env.update(USERPROFILE=home, HOME=home, HUB_NO_BROWSER="1",
                PYTHONIOENCODING="utf-8", HUB_NO_WATCH="1")
+    # 桌面版技能目录走 LOCALAPPDATA，一并指向假目录，保证测试完全隔离
+    env["LOCALAPPDATA"] = os.path.join(home, "AppData", "Local")
+    env["APPDATA"] = os.path.join(home, "AppData", "Roaming")
     proc = subprocess.Popen([sys.executable, "server.py", str(port)],
                             cwd=os.path.join(hub, "core"), env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)

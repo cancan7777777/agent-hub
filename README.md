@@ -43,6 +43,49 @@ agent-hub 的做法是**只保留一份真源**，其余位置全部换成目录
 `~/.agents/skills` 是 [Agent Skills](https://agentskills.io) 规范的标准位置，
 Codex、Gemini CLI、Pi 等都会原生读取它。
 
+## Claude 桌面版与 Claude Code 能共用吗
+
+**结论：技能不自动共用，插件也不共用。** 两者虽然都是 Claude，但读取的是完全不同的目录。
+
+实测依据（Claude 桌面版 2.x，local agent mode）：
+
+| | Claude Code（CLI） | Claude 桌面版 |
+|---|---|---|
+| 配置目录 | `~/.claude` | 会话私有目录，由 `CLAUDE_CONFIG_DIR` 指定 |
+| 技能位置 | `~/.claude/skills`、`~/.agents/skills` | `%LOCALAPPDATA%\Claude-3p\local-agent-mode-sessions\skills-plugin\<UUID>\<UUID>\skills` |
+| 运行环境 | 本机进程 | 独立 Linux 虚拟机（`rootfs.vhdx`），会话工作目录是 `/home/…` |
+| 插件机制 | marketplace / `@skills-dir` / `@inline` | app 自带的 `anthropic-skills` 插件，用户不接管 |
+
+桌面版内嵌的其实也是一个 `claude.exe`，但它被显式指向了自己的配置目录，
+所以放进 `~/.claude/skills` 的东西桌面版看不到，反之亦然。
+
+### 那能做什么
+
+**技能可以单向搬运** —— 桌面版那个 `skills` 目录本身就是标准的 Claude Code 插件结构
+（含 `.claude-plugin/plugin.json`），本工具已支持把它里面的技能取出并分发给其他 agent：
+
+1. 技能页找到来自「Claude 桌面版」的那几行（`docx`、`pdf`、`xlsx`、`pptx`、`frontend-design` 等）
+2. 点行首方框托管 → 内容复制进真源，桌面版原目录保持不动
+3. 之后就能像普通技能一样分发给 Claude Code、Codex 等任意 agent
+
+注意桌面版自带技能里有几个依赖它自己的运行时（`schedule` 定时任务、`explain-usage`、
+`setup-cowork`、`consolidate-memory`），搬到别的 agent 后指令能读，但调用的工具不存在，
+这类建议不要托管。纯知识型的（`docx`、`pdf`、`pdf-reading`、`xlsx`、`pptx`、`frontend-design`）搬过去是可用的。
+
+**反方向同理**：想让 Claude Code 的技能出现在桌面版里，目前没有用户可写的入口 ——
+桌面版的技能目录由 app 托管且路径含会话 UUID，写进去随时会被覆盖。
+
+**官方的 `@synced` 通道对你无效**：Claude Code 会把你在 claude.ai 账户开启的插件同步进终端，
+但官方文档明确排除了一类会话 —— 凭证由 `ANTHROPIC_AUTH_TOKEN` / 网关提供的情况。
+你当前通过 CC Switch 走本地网关，正好属于这一类，所以同步插件不会加载。
+
+### 插件为什么更不行
+
+桌面版的插件是 app 下发到会话目录里的，Claude Code 的插件走 `installed_plugins.json` + 缓存，
+两边的清单、路径、校验方式都不一样。本工具的插件页只做跨 agent 盘点，不写入。
+
+---
+
 ## 快速开始
 
 需要 Python 3.11 以上（用到 `tomllib`），无第三方依赖。
