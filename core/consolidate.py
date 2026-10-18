@@ -312,9 +312,10 @@ def host_one(name: str, force: bool = False) -> dict:
                 actions.append(dict(agent=c["owner"], dir=c["base"], msg="已转为联接"))
             else:
                 errors.append("建联接失败 " + c["path"])
-    # 装一次，处处可用：为所有可写 agent 铺好联接（不只是已有副本的那些）
+    # 默认只铺常用的几家（Codex / Claude Code / Antigravity）；
+    # 技能原来所在那一家在上面已经处理过了。其余 agent 要用就在矩阵里单独点。
     seen = {(c["owner"], c["base"]) for c in cands}
-    for a in registry.AGENTS:
+    for a in registry.auto_install_agents():
         if a.get("read_only"):
             continue
         for sd in a["skills"]:

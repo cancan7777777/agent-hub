@@ -89,6 +89,7 @@ def build_state(force=False, since=0.0) -> dict:
     for v in s["views"]:
         view_by_agent.setdefault(v["agent"], []).append(v)
 
+    defaults = set(registry.default_install_ids())
     agent_meta = []
     for a in registry.ordered_agents():
         dirs = []
@@ -103,6 +104,7 @@ def build_state(force=False, since=0.0) -> dict:
                    if r.get("by_agent", {}).get(a["id"], {}).get("present")})
         agent_meta.append(dict(id=a["id"], name=a["name"], vendor=a["vendor"], color=a["color"],
                                icon=a.get("icon", ""),
+                               default_install=a["id"] in defaults,
                                verified=a.get("verified", False), read_only=a.get("read_only", False),
                                note=a.get("note", ""), dirs=dirs, mcp_path=mspec.get("path"),
                                mcp_exists=os.path.isfile(mspec.get("path", "")) if mspec else False,
@@ -143,6 +145,7 @@ def build_state(force=False, since=0.0) -> dict:
                 agents_home=dict(path=registry.AGENTS_SKILLS, kind=link_kind(registry.AGENTS_SKILLS),
                                  target=read_target(registry.AGENTS_SKILLS)),
                 hub_disabled_dir=os.path.join(registry.CANONICAL, "_hub_disabled"),
+                default_install=sorted(defaults),
                 skills=skills,
                 stats=dict(skills=len(matrix), hosted=len(hosted), drift=len(drift),
                            unhosted=len(unhosted), disabled=len(disabled), linked=linked,
@@ -554,6 +557,9 @@ class Handler(BaseHTTPRequestHandler):
                 if u == "/api/autohost":
                     watcher.set_auto_host(bool(b.get("on")))
                     return self._send(200, dict(ok=True, auto_host=watcher.AUTO_HOST))
+                if u == "/api/default_install":
+                    ids = registry.set_default_install(b.get("agents"))
+                    return self._send(200, dict(ok=True, default_install=ids))
                 if u == "/api/skill/add":
                     return self._send(200, add_skill(b.get("path", ""), bool(b.get("host", True))))
                 if u == "/api/consolidate/apply":

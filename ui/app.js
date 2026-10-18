@@ -44,7 +44,8 @@ const ICONS = {
   x:'<path d="M18 6 6 18M6 6l12 12"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   trash:'<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
-  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'
+  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  gear:'<path d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="17" r="2"/>'
 };
 
 function svgPath(d){
@@ -176,11 +177,14 @@ async function render(keepScroll){
   const btnAuto = (S.tab==="skills"||S.tab==="mcp")
     ? '<button class="btn '+(auto?"":"ghost")+'" data-act="toggle-auto" title="外部 agent 新增技能/配置时自动同步到本界面">'
       + svg("refresh")+'自动同步 '+(auto?"开":"关")+'</button>' : "";
+  const btnDefault = S.tab==="skills"
+    ? '<button class="btn ghost" data-act="default-install" title="设置新增技能默认装给哪几个 agent">'
+      + svg("gear")+'默认安装 '+(S.state.default_install||[]).length+' 家</button>' : "";
   const btnRescan = '<button class="btn ghost" data-act="rescan">'+svg("refresh")+'重新扫描</button>';
   const btnImport = (S.tab==="skills" && S.state && S.state.stats.unhosted)
-    ? '<button class="btn" data-act="import-all" title="把各 agent 里散落、还没进真源的技能一次性收进真源并铺满">'
+    ? '<button class="btn" data-act="import-all" title="把各 agent 里散落、还没进真源的技能一次性收进真源">'
       + svg("bolt")+'一键导入 ('+S.state.stats.unhosted+')</button>' : "";
-  setHeader(H[0], H[1], btnAuto + btnImport + btnAdd + btnRescan);
+  setHeader(H[0], H[1], btnAuto + btnDefault + btnImport + btnAdd + btnRescan);
   if (S.tab==="skills")      v.innerHTML = skillsHTML();
   else if (S.tab==="mcp")    v.innerHTML = await mcpHTML();
   else if (S.tab==="plugin") v.innerHTML = await pluginsHTML();
@@ -407,6 +411,12 @@ function bindView(){
   const fd = $("#fdrift"); if (fd) fd.addEventListener("change", e => { S.driftOnly = e.target.checked; refreshSkillList(); });
 }
 function rerenderSkills(){ $("#view").innerHTML = skillsHTML(); bindView(); }
+/* 默认安装名单的中文串，用于各处提示 */
+function namesForIds(ids){
+  const nm = (ids || []).map(id => ((S.state.agents.find(a => a.id === id) || {}).name || id));
+  return nm.length ? nm.join("、") : "不自动装任何 agent";
+}
+function defaultNames(){ return namesForIds(S.state && S.state.default_install || []); }
 
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("[data-act]");
@@ -418,10 +428,13 @@ document.addEventListener("click", async ev => {
   if (act === "toggle-auto"){
     S.autoHost = !S.autoHost;
     await api("/api/autohost", {on: S.autoHost});
-    toast("ok", "自动同步已" + (S.autoHost?"开启":"关闭"), S.autoHost?"外部新增技能会自动收进真源并铺满各 agent":"需手动点重新扫描");
+    toast("ok", "自动同步已" + (S.autoHost?"开启":"关闭"), S.autoHost?"外部新增技能会自动收进真源，并装到 "+defaultNames():"需手动点重新扫描");
     render(); return;
   }
   if (act === "add-skill"){ openAddDialog(); return; }
+  if (act === "default-install"){ openDefaultDialog(); return; }
+  if (act === "default-save"){ await saveDefaultInstall(t); return; }
+  if (act === "default-preset"){ checkPreset(t.dataset.preset); return; }
   if (act === "import-all"){ doImportAll(t); return; }
   if (act === "clear-q"){
     const id = t.dataset.target, el = document.getElementById(id);
@@ -558,7 +571,7 @@ async function doToggle(sk, ag, on){
 
 async function doImportAll(btn){
   const n = S.state.stats.unhosted;
-  if (!confirm("一键导入 " + n + " 个散落技能？\n\n每个技能会：择优收进真源 -> 原有副本先压成 zip 备份 -> 就地改为目录联接 -> 铺满所有 agent。")) return;
+  if (!confirm("一键导入 " + n + " 个散落技能？\n\n每个技能会：择优收进真源 -> 原有副本先压成 zip 备份 -> 就地改为目录联接 -> 装到 " + defaultNames() + "。\n\n其他 agent 要用，在矩阵里单独点格子即可。")) return;
   if (btn) btn.classList.add("busy");
   try{
     const r = await api("/api/import/all", {});
@@ -568,6 +581,65 @@ async function doImportAll(btn){
     S.rev = null;
     await refreshAll(true);
   }catch(e){ toast("bad","导入失败", e.message); }
+  finally{ if (btn) btn.classList.remove("busy"); }
+}
+
+/* ---------------- 默认安装范围对话框 ---------------- */
+function openDefaultDialog(){
+  const list = S.state.agents.filter(a => !a.read_only);
+  const on = new Set(S.state.default_install || []);
+  const rows = list.map(a =>
+    '<label class="di-row'+(on.has(a.id)?' on':'')+'">'+
+      '<input type="checkbox" class="di-cb" value="'+esc(a.id)+'"'+(on.has(a.id)?' checked':'')+'>'+
+      '<span class="agicon" style="background:'+esc(a.color)+'">'+svgPath(a.icon)+'</span>'+
+      '<span class="di-tx"><b>'+esc(a.name)+'</b>'+
+        '<span>'+esc(a.vendor)+(a.verified?'':' · 未验证')+'</span></span>'+
+    '</label>').join("");
+  $("#overlay").innerHTML =
+    '<div class="scrim" data-act="close-drawer"></div>'+
+    '<div class="modal">'+
+      '<div class="modal-hd"><h2>新增技能默认装给谁</h2><button class="x" data-act="close-drawer">'+svg("x")+'</button></div>'+
+      '<div class="modal-bd">'+
+        '<p class="tip">技能被收进真源时，只自动装到<b>打勾的这几家</b>（外加技能原本所在的那一家）。'+
+        '其余 agent 要用，在矩阵里单独点格子。装得越少，各家启动时的技能清单越短。</p>'+
+        '<div class="di-preset">'+
+          '<button class="btn ghost sm" data-act="default-preset" data-preset="常用">常用三家</button>'+
+          '<button class="btn ghost sm" data-act="default-preset" data-preset="全部">全部</button>'+
+          '<button class="btn ghost sm" data-act="default-preset" data-preset="仅来源">只留原处</button>'+
+        '</div>'+
+        '<div class="di-list">'+rows+'</div>'+
+        '<div class="hint-box">当前默认：<b id="di-sum">'+esc(defaultNames())+'</b></div>'+
+      '</div>'+
+      '<div class="modal-ft"><button class="btn" data-act="close-drawer">取消</button>'+
+        '<button class="btn primary" data-act="default-save">'+svg("gear")+'保存</button></div>'+
+    '</div>';
+  document.querySelectorAll(".di-cb").forEach(cb => cb.addEventListener("change", syncDiRows));
+}
+function checkedIds(){
+  return Array.from(document.querySelectorAll(".di-cb")).filter(x => x.checked).map(x => x.value);
+}
+function checkPreset(p){
+  const all = Array.from(document.querySelectorAll(".di-cb"));
+  const want = p === "全部" ? null
+    : p === "常用" ? ["codex","claude","antigravity"]
+    : [];
+  all.forEach(cb => { cb.checked = want === null ? true : want.includes(cb.value); });
+  syncDiRows();
+}
+function syncDiRows(){
+  document.querySelectorAll(".di-row").forEach(r => r.classList.toggle("on", r.querySelector(".di-cb").checked));
+  const sum = $("#di-sum"); if (sum) sum.textContent = namesForIds(checkedIds());
+}
+async function saveDefaultInstall(btn){
+  const ids = checkedIds();
+  if (btn) btn.classList.add("busy");
+  try{
+    const r = await api("/api/default_install", {agents: ids});
+    S.state.default_install = r.default_install;
+    closeDrawer();
+    toast("ok","已保存默认安装范围", (r.default_install||[]).length ? defaultNames() : "新技能只留在原处，不再自动分发");
+    render();
+  }catch(e){ toast("bad","保存失败", e.message); }
   finally{ if (btn) btn.classList.remove("busy"); }
 }
 
@@ -581,8 +653,8 @@ function openAddDialog(){
         '<p class="tip">把技能文件夹（含 SKILL.md）或 zip 包的<b>绝对路径</b>粘贴进来。可以是从别的 agent 目录、下载目录、或别人发给你的路径。'+
         '<div class="field-row"><label>技能目录 / zip 路径</label>'+
           '<input class="field" id="addpath" placeholder="例如 D:\\downloads\\my-skill  或  ...\\my-skill.zip" spellcheck="false"></div>'+
-        '<label class="mini-l chk"><input type="checkbox" id="addhost" checked> 导入后自动托管并铺满所有 agent</label>'+
-        '<div class="hint-box">提示：也可以直接把文件夹放进真源目录 <code>'+esc(S.state.canonical_dir)+'</code>，界面会自动检测到（开着自动同步时会自动铺满）。</div>'+
+        '<label class="mini-l chk"><input type="checkbox" id="addhost" checked> 导入后自动托管，并装到 '+defaultNames()+'</label>'+
+        '<div class="hint-box">提示：也可以直接把文件夹放进真源目录 <code>'+esc(S.state.canonical_dir)+'</code>，界面会自动检测到（开着自动同步时会自动收进真源并装到默认那几家）。</div>'+
       '</div>'+
       '<div class="modal-ft"><button class="btn" data-act="close-drawer">取消</button>'+
         '<button class="btn primary" data-act="add-skill-go">'+svg("plus")+'导入</button></div>'+
@@ -962,11 +1034,12 @@ const HASH2TAB = {skills:1, mcp:1, plugin:1, hub:1};
 (async function boot(){
   const h = (location.hash||"").replace("#","");
   if (HASH2TAB[h]) S.tab = h;
-  else if (h.startsWith("skill:")) S.tab = "skills";
+  else if (h.startsWith("skill:") || h === "prefs") S.tab = "skills";
   renderShell();
   await refreshAll();
   api("/api/mcp").then(d => { S.mcp = d; renderShell(); }).catch(()=>{});
   api("/api/plugins").then(d => { S.plugins = d; renderShell(); }).catch(()=>{});
   if (h.startsWith("skill:")) openDrawer(decodeURIComponent(h.slice(6)));
+  if (h === "prefs") openDefaultDialog();
   setInterval(pollWatch, 2500);
 })();

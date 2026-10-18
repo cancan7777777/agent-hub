@@ -24,6 +24,7 @@ G = os.path.join(USERPROFILE, ".gemini")
 
 AGENTS = [
     dict(id="codex", name="Codex / ChatGPT", vendor="OpenAI", color="#10a37f", verified=True,
+         auto_install=True,
          icon='<path d="M12 2 3 7v10l9 5 9-5V7Z"/><path d="M12 22V12M3 7l9 5 9-5"/>',
          skills=[dict(path=os.path.join(USERPROFILE, ".codex", "skills"), role="agent",
                       protect=[".system"]),
@@ -34,6 +35,7 @@ AGENTS = [
          note="原生读取 .codex\\skills 与 .agents\\skills 两处。"),
 
     dict(id="claude", name="Claude Code", vendor="Anthropic", color="#d97757", verified=True,
+         auto_install=True,
          icon='<path d="M12 3c2.5 3 4 5.5 4 8a4 4 0 0 1-8 0c0-2.5 1.5-5 4-8Z"/><path d="M9 21h6"/>',
          skills=[dict(path=os.path.join(USERPROFILE, ".claude", "skills"), role="agent")],
          mcp=dict(path=os.path.join(USERPROFILE, ".claude.json"), format="json", key="mcpServers"),
@@ -55,6 +57,7 @@ AGENTS = [
          note="读写 ~/.gemini/config：skills 目录 + mcp_config.json。"),
 
     dict(id="antigravity", name="Antigravity", vendor="Google", color="#4285f4", verified=True,
+         auto_install=True,
          icon='<path d="M12 16V4"/><path d="m8 8 4-4 4 4"/><path d="M4 20h16"/>',
          skills=[dict(path=os.path.join(G, "antigravity", "builtin", "skills"), role="agent",
                       protect=["agy-customizations", "antigravity_guide", "generative_ui",
@@ -168,6 +171,41 @@ SOURCES = [SOURCE_ONLY, CLAUDE_DESKTOP]
 _ORDER = ["codex", "claude", "claude-desktop", "antigravity", "trae",
           "workbuddy", "dsh", "cursor", "gemini", "opencode", "pi",
           "qoder", "zcode", "ccswitch"]
+
+
+def writable_agents() -> list:
+    """可写入的 agent（排除只读来源）。"""
+    return [a for a in AGENTS if not a.get("read_only")]
+
+
+def default_install_ids() -> list:
+    """新增技能时默认装给哪些 agent，可在界面里改，存 state.json。
+
+    没设置过时用登记表里标了 auto_install 的那几家。
+    """
+    ids = load_state().get("default_install")
+    if not isinstance(ids, list):
+        return [a["id"] for a in AGENTS if a.get("auto_install")]
+    valid = {a["id"] for a in writable_agents()}
+    return [i for i in ids if i in valid]
+
+
+def set_default_install(ids) -> list:
+    """写入默认安装名单，返回实际生效的列表。"""
+    valid = {a["id"] for a in writable_agents()}
+    keep = [i for i in (ids or []) if i in valid]
+    order = {a["id"]: n for n, a in enumerate(AGENTS)}
+    keep = sorted(set(keep), key=lambda x: order.get(x, 999))
+    st = load_state()
+    st["default_install"] = keep
+    save_state(st)
+    return keep
+
+
+def auto_install_agents() -> list:
+    """按当前偏好返回默认安装的 agent 对象列表。"""
+    want = set(default_install_ids())
+    return [a for a in writable_agents() if a["id"] in want]
 
 
 def ordered_agents() -> list:
