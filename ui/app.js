@@ -1,7 +1,7 @@
 /* ================= AI AGENT HUB · 控制台（简洁版） ================= */
 const S = { tab:"skills", state:null, mcp:null, plugins:null, plan:null,
             q:"", qm:"", qp:"", qh:"", agent:"", driftOnly:false, sel:new Set(), busy:false,
-            rev:null, lastNoticeTs:0, autoHost:true };
+            rev:null, lastNoticeTs:0, autoHost:true, skillScroll:null, mcpScroll:null };
 
 const $  = (s,r)=> (r||document).querySelector(s);
 const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
@@ -231,10 +231,6 @@ function skillsHTML(){
   ].map(([l,v,k]) => '<div class="stat"><b>'+esc(v)+'</b><span>'+esc(l)+
       (k?' <span class="chip '+k+'">'+(k==="bad"?"需处理":k==="warn"?"待收敛":"正常")+'</span>':'')+'</span></div>').join("");
 
-  const agTh = st.agents.map(a =>
-    '<span class="th-ag" title="'+esc(a.name)+'"><span class="agicon" style="background:'+a.color+'">'+svgPath(a.icon)+
-    '</span><em>'+esc(a.name.trim().split(/[\/（(]/)[0])+'</em><b>'+a.skill_count+'</b></span>').join("");
-
   const opts = ['<option value="">全部</option>'].concat(st.agents.map(a =>
     '<option value="'+a.id+'"'+(S.agent===a.id?" selected":"")+'>'+esc(a.name)+'</option>')).join("");
 
@@ -242,7 +238,7 @@ function skillsHTML(){
   '<div class="toolbar-top">'+
     '<div class="tabs"><button class="tab'+(S.tab==="skills"?" on":"")+'" disabled>已托管 '+s.hosted+'</button>'+
       '<button class="tab" data-act="tab" data-id="hub">待收敛 '+s.unhosted+'</button></div>'+
-    searchBox("q", S.q, "搜索技能：名称 / 描述 / 路径 / agent，空格分隔多词")+
+    searchBox("q", S.q, "搜索技能：名称、描述、路径")+
     '<span class="hit" id="qhit"></span>'+
   '</div>'+
   '<div class="stats">'+cards+'</div>'+
@@ -251,7 +247,6 @@ function skillsHTML(){
       '<label class="cb'+(allChecked()?" on":"")+'" data-act="sel-all" role="checkbox" aria-checked="'+allChecked()+'"></label>'+
       '<select class="mini" id="fagent">'+opts+'</select>'+
       '<label class="mini-l"><input type="checkbox" id="fdrift"'+(S.driftOnly?" checked":"")+'> 仅看版本漂移</label>'+
-      '<div class="th-agents">'+agTh+'</div>'+
     '</div>'+
     '<div class="mx-wrap" id="mxwrap">'+matrixHTML()+'</div>'+
     '<div class="hscroll" id="hscroll"><div class="hscroll-thumb"></div></div>'+
@@ -288,9 +283,11 @@ function matrixHTML(){
     (S.q||S.agent||S.driftOnly ? '当前条件：'+esc([S.q&&('“'+S.q+'”'), S.agent, S.driftOnly&&"仅漂移"].filter(Boolean).join(" · "))+'<br>换个关键词，或点搜索框右侧 × 清除' : '点右上「添加技能」导入')+'</div>';
   const head = '<tr><th><span class="nm">技能</span></th>'+
     st.agents.map(a=>'<th class="agh" title="'+esc(a.name)+'"><span class="agicon" style="background:'+a.color+'">'+
-      svgPath(a.icon)+'</span><em>'+esc(a.name.trim().split(/[\/（(]/)[0])+'</em></th>').join("")+'<th class="op"></th></tr>';
+      svgPath(a.icon)+'</span><em>'+esc(a.name)+'</em></th>').join("")+'<th class="op"></th></tr>';
   const body = list.map(rowHTML).join("");
-  return '<table class="mx"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+  const widths = '--mobile-table-width:' + (285 + st.agents.length * 80) + 'px;' +
+                 '--tablet-table-width:' + (376 + st.agents.length * 96) + 'px';
+  return '<table class="mx" style="' + widths + '"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
 }
 
 
@@ -363,15 +360,12 @@ function refreshCounters(){
   if (t1) t1.textContent = "已托管 " + hosted;
   const t2 = document.querySelectorAll(".tabs .tab")[1];
   if (t2) t2.textContent = "待收敛 " + unhosted;
-  $$(".th-agents .th-ag b").forEach((b,i) => {
-    const a = S.state.agents[i]; if (a) b.textContent = a.skill_count;
-  });
   renderShell();
 }
 
 /* ---------------- 交互绑定 ---------------- */
-function bindHScroll(){
-  const wrap = $("#mxwrap"), bar = $("#hscroll");
+function bindHScroll(wrapSelector, barSelector){
+  const wrap = $(wrapSelector), bar = $(barSelector);
   if (!wrap || !bar) return;
   const thumb = bar.querySelector(".hscroll-thumb");
   function sync(){
@@ -383,7 +377,6 @@ function bindHScroll(){
     thumb.style.transform = "translateX(" + (wrap.scrollLeft / (sw - cw)) * (bar.clientWidth - tw) + "px)";
   }
   wrap.addEventListener("scroll", sync);
-  window.addEventListener("resize", sync);
   try { new ResizeObserver(sync).observe(wrap); } catch(e){}
   let drag = null;
   thumb.addEventListener("pointerdown", e => {
@@ -405,13 +398,16 @@ function bindHScroll(){
     wrap.scrollTo({left: (sw - cw) * center, behavior: "smooth"});
   });
   sync();
+  return sync;
 }
 function refreshSkillList(){
   $("#mxwrap").innerHTML = matrixHTML();
   updCount("#qhit", visibleSkills().length, S.state.skills.length);
+  if (S.skillScroll) S.skillScroll();
 }
 function bindView(){
-  bindHScroll();
+  S.skillScroll = bindHScroll("#mxwrap", "#hscroll");
+  S.mcpScroll = bindHScroll("#mcpwrap", "#mcphscroll");
   updCount("#qhit", visibleSkills().length, S.state.skills.length);
   const fa = $("#fagent"); if (fa) fa.addEventListener("change", e => { S.agent = e.target.value; refreshSkillList(); });
   const fd = $("#fdrift"); if (fd) fd.addEventListener("change", e => { S.driftOnly = e.target.checked; refreshSkillList(); });
@@ -774,24 +770,25 @@ function mcpRowsHTML(){
 }
 function mcpHeads(A){
   return A.map(a => '<th class="agh" title="' + esc(a.name) + '"><span class="agicon" style="background:' + a.color + '">' +
-    svgPath(a.icon) + '</span><em>' + esc(a.name.trim().split(/[\/（(]/)[0]) + '</em></th>').join("");
+    svgPath(a.icon) + '</span><em>' + esc(a.name) + '</em></th>').join("");
 }
 async function mcpHTML(){
   S.mcp = S.mcp || await api("/api/mcp");
-  const m = S.mcp, A = m.agents, heads = mcpHeads(A);
+  const m = S.mcp, A = m.agents;
   const nShown = mcpShown();
   return '' +
   '<div class="toolbar-top">' +
     '<div class="tabs"><button class="tab on">服务器 ' + m.rows.length + '</button><button class="tab">配置点 ' + A.length + '</button></div>' +
-    searchBox("qm", S.qm, "搜索 MCP：名称 / 命令 / 参数 / URL / 来源，空格分隔多词") +
+    searchBox("qm", S.qm, "搜索 MCP：名称、命令、URL") +
     '<span class="hit" id="qmhit"></span>' +
     '<button class="btn" data-act="mcp-seed">' + svg("refresh") + '从 Codex 吸收</button>' +
   '</div>' +
   (!m.rows.length ? '<div class="panel"><div class="empty"><b>主列表为空</b>点右上「从 Codex 吸收」把现有 MCP 服务器收进 Hub</div></div>'
    : !nShown ? '<div class="panel"><div class="empty"><b>没有匹配的服务器</b>「' + esc(S.qm) + '」不在任何名称 / 命令 / 参数 / 路径里</div></div>'
    : '' +
-  '<div class="panel"><div class="toolbar"><span class="mini-l">服务器 × agent 分发 · 点方格单独增删，⚡ 一键推送全部</span><div class="th-agents">' + heads + '</div></div>' +
+  '<div class="panel"><div class="toolbar"><span class="mini-l">服务器 × agent 分发 · 点方格单独增删，⚡ 一键推送全部</span></div>' +
     '<div class="mx-wrap" id="mcpwrap">' + mcpListHTML() + '</div>' +
+    '<div class="hscroll" id="mcphscroll"><div class="hscroll-thumb"></div></div>' +
     '<div class="legend"><span><i style="background:#10b981"></i>该 agent 已配置</span><span><i style="background:#d1d5db"></i>未配置</span>' +
     '<span style="margin-left:auto">Codex 写 config.toml，其余写各自 mcp.json；写入前自动备份，TOML 校验失败自动回滚</span></div></div>' +
   '<div class="panel"><div class="toolbar"><span class="mini-l">配置落点</span></div><div class="rows">' +
@@ -799,12 +796,20 @@ async function mcpHTML(){
       '</span><span class="rdesc" title="' + esc(a.path) + '">' + esc(shortPath(a.path)) + '</span><span class="ract">' +
       '<span class="chip ' + (a.exists ? "ok" : "warn") + '">' + (a.exists ? "文件存在" : "待创建") + '</span><span class="chip mute">' + a.format + '</span></span></div>').join("") +
   '</div></div>') +
-  '<div class="panel"><div class="toolbar"><span class="mini-l">新增 MCP 服务器（加入 Hub 主列表）</span></div>' +
-  '<div class="newform">' +
-    '<input class="field" id="new-name" placeholder="名称，如 codepptx"><input class="field" id="new-type" placeholder="type：stdio / http">' +
-    '<input class="field" id="new-command" placeholder="command，如 npx"><input class="field" id="new-args" placeholder="args，空格分隔">' +
-    '<input class="field" id="new-url" placeholder="url（http 类型）"><input class="field" id="new-description" placeholder="说明">' +
-    '<button class="btn primary" data-act="mcp-add">' + svg("plus") + '加入主列表</button></div></div>';
+  '<div class="panel create-panel">' +
+    '<div class="create-head"><div class="create-copy"><b>新增 MCP 服务器</b><span>先保存到主列表，再按需推送到各个 Agent</span></div>' +
+      '<span class="chip mute">主配置</span></div>' +
+    '<div class="newform">' +
+      '<label class="newfield"><span>名称 *</span><input class="field" id="new-name" placeholder="例如 filesystem"></label>' +
+      '<label class="newfield"><span>类型</span><select class="field" id="new-type"><option value="stdio">stdio · 本地进程</option><option value="http">http · 远程服务</option></select></label>' +
+      '<label class="newfield"><span>命令</span><input class="field" id="new-command" placeholder="例如 npx"></label>' +
+      '<label class="newfield"><span>参数</span><input class="field" id="new-args" placeholder="例如 -y @modelcontextprotocol/server-filesystem"></label>' +
+      '<label class="newfield"><span>URL</span><input class="field" id="new-url" placeholder="HTTP 服务地址"></label>' +
+      '<label class="newfield newfield-wide"><span>说明</span><input class="field" id="new-description" placeholder="一句话描述用途"></label>' +
+    '</div>' +
+    '<div class="create-actions"><span>支持 stdio 与 HTTP，写入前自动备份</span>' +
+      '<button class="btn primary" data-act="mcp-add">' + svg("plus") + '加入主列表</button></div>' +
+  '</div>';
 }
 
 /* ---------------- 视图 · 插件 ---------------- */
@@ -848,7 +853,7 @@ async function pluginsHTML(){
   return '' +
   '<div class="toolbar-top">' +
     '<div class="tabs"><button class="tab on">插件 ' + p.total + '</button></div>' +
-    searchBox("qp", S.qp, "搜索插件：名称 / 市场 / 版本 / agent，空格分隔多词") +
+    searchBox("qp", S.qp, "搜索插件：名称、市场、版本") +
     '<span class="hit" id="qphit"></span>' +
   '</div>' +
   (nShown !== total ? '<div class="panel"><div class="empty"><b>' +
@@ -871,13 +876,16 @@ function mcpListHTML(){
   const m = S.mcp, A = m.agents;
   if (!mcpShown())
     return '<div class="empty"><b>没有匹配的服务器</b>「' + esc(S.qm) + '」不在任何名称 / 命令 / 参数 / 路径里</div>';
-  return '<table class="mx"><thead><tr><th><span class="nm">MCP 服务器</span></th>' + mcpHeads(A) +
+  const widths = '--mobile-table-width:' + (285 + A.length * 80) + 'px;' +
+                 '--tablet-table-width:' + (376 + A.length * 96) + 'px';
+  return '<table class="mx" style="' + widths + '"><thead><tr><th><span class="nm">MCP 服务器</span></th>' + mcpHeads(A) +
          '<th class="op"></th></tr></thead><tbody>' + mcpRowsHTML() + '</tbody></table>';
 }
 function refreshMcpList(){
   const w = $("#mcpwrap"); if (!w) return;
   w.innerHTML = mcpListHTML();
   updCount("#qmhit", mcpShown(), S.mcp ? S.mcp.rows.length : 0);
+  if (S.mcpScroll) S.mcpScroll();
 }
 function refreshPluginList(){
   const w = $("#plugroups"); if (!w) return;
