@@ -1,4 +1,4 @@
-"""consolidate - 把散落在各 agent 的副本收敛成 D 盘单一真源，其余位置换成目录联接。
+"""consolidate - 把散落在各 agent 的副本收敛成单一真源，其余位置换成目录联接。
 
 安全原则
   1. 任何实体目录在删除前先压成 zip 存到 data/backups/

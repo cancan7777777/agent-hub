@@ -155,10 +155,14 @@ async function switchTab(id){
 async function refreshAll(fresh){
   $("#view").innerHTML = '<div class="empty"><b>正在扫描磁盘…</b>读取各 agent 的技能目录与配置</div>';
   S.state = await api("/api/state"+(fresh?"?fresh=1":""));
+  /* 首屏就要按服务端的真实开关上色，不能等轮询 */
+  if (S.state.watch && typeof S.state.watch.auto_host === "boolean") S.autoHost = S.state.watch.auto_host;
   renderShell(); await render();
 }
+/* 真源目录：状态未加载时不显示具体路径 */
+function canonDir(){ return (S.state && S.state.canonical_dir) || "本机"; }
 const HEADERS = {
-  skills: ["技能分发", "单一真源在 D 盘，各 agent 目录用目录联接指向它。点行首方框托管，点方格单独为某个 agent 开关。"],
+  skills: ["技能分发", "单一真源在 {canon}，各 agent 目录用目录联接指向它。点行首方框托管，点方格单独为某个 agent 开关。"],
   mcp:    ["MCP 服务", "Hub 持有一份主列表，按各家原生格式分发：Codex 写 config.toml，其余写各自 mcp.json。写入前自动备份。"],
   plugin: ["插件盘点", "各工具插件格式互不兼容（清单/缓存/签名机制不同），此页只做跨 agent 盘点与对照，不做写入。"],
   hub:    ["收敛中心", "把散落在各 agent 的副本合并成单一真源：先备份 zip，再删副本，最后就地建目录联接。"],
@@ -175,16 +179,16 @@ async function render(keepScroll){
   const btnAdd = S.tab==="skills"
     ? '<button class="btn primary" data-act="add-skill">'+svg("plus")+'添加技能</button>' : "";
   const btnAuto = (S.tab==="skills"||S.tab==="mcp")
-    ? '<button class="btn '+(auto?"":"ghost")+'" data-act="toggle-auto" title="外部 agent 新增技能/配置时自动同步到本界面">'
-      + svg("refresh")+'自动同步 '+(auto?"开":"关")+'</button>' : "";
+    ? '<button class="btn '+(auto?"on":"off")+'" data-act="toggle-auto" title="外部 agent 新增技能/配置时自动同步到本界面">'
+      + '<i class="dot"></i>自动同步·'+(auto?"开":"关")+'</button>' : "";
   const btnDefault = S.tab==="skills"
-    ? '<button class="btn ghost" data-act="default-install" title="设置新增技能默认装给哪几个 agent">'
-      + svg("gear")+'默认安装 '+(S.state.default_install||[]).length+' 家</button>' : "";
-  const btnRescan = '<button class="btn ghost" data-act="rescan">'+svg("refresh")+'重新扫描</button>';
+    ? '<button class="btn amber" data-act="default-install" title="设置新增技能默认装给哪几个 agent">'
+      + svg("gear")+'默认安装 <b>'+(S.state.default_install||[]).length+'</b> 家</button>' : "";
+  const btnRescan = '<button class="btn" data-act="rescan">'+svg("refresh")+'重新扫描</button>';
   const btnImport = (S.tab==="skills" && S.state && S.state.stats.unhosted)
     ? '<button class="btn" data-act="import-all" title="把各 agent 里散落、还没进真源的技能一次性收进真源">'
       + svg("bolt")+'一键导入 ('+S.state.stats.unhosted+')</button>' : "";
-  setHeader(H[0], H[1], btnAuto + btnDefault + btnImport + btnAdd + btnRescan);
+  setHeader(H[0], H[1].replace("{canon}", canonDir()), btnAuto + btnDefault + btnImport + btnAdd + btnRescan);
   if (S.tab==="skills")      v.innerHTML = skillsHTML();
   else if (S.tab==="mcp")    v.innerHTML = await mcpHTML();
   else if (S.tab==="plugin") v.innerHTML = await pluginsHTML();
@@ -652,7 +656,7 @@ function openAddDialog(){
       '<div class="modal-bd">'+
         '<p class="tip">把技能文件夹（含 SKILL.md）或 zip 包的<b>绝对路径</b>粘贴进来。可以是从别的 agent 目录、下载目录、或别人发给你的路径。'+
         '<div class="field-row"><label>技能目录 / zip 路径</label>'+
-          '<input class="field" id="addpath" placeholder="例如 D:\\downloads\\my-skill  或  ...\\my-skill.zip" spellcheck="false"></div>'+
+          '<input class="field" id="addpath" placeholder="技能目录或 zip 的完整路径，如 C:\\Downloads\\my-skill" spellcheck="false"></div>'+
         '<label class="mini-l chk"><input type="checkbox" id="addhost" checked> 导入后自动托管，并装到 '+defaultNames()+'</label>'+
         '<div class="hint-box">提示：也可以直接把文件夹放进真源目录 <code>'+esc(S.state.canonical_dir)+'</code>，界面会自动检测到（开着自动同步时会自动收进真源并装到默认那几家）。</div>'+
       '</div>'+
