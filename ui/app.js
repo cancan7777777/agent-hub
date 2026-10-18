@@ -254,7 +254,7 @@ function skillsHTML(){
   '</div>';
 }
 function allChecked(){
-  const list = visibleSkills().filter(r => !r.protected);
+  const list = visibleSkills().filter(r => !r.builtin);
   return list.length>0 && list.every(r => r.canonical);
 }
 function skillHay(r){
@@ -296,14 +296,15 @@ function rowHTML(r){
   }).join("");
   return '<tr data-row="'+esc(r.name)+'">'+
     '<td class="skname"><div class="skline">'+
-      '<label class="cb'+(r.canonical?" on":(r.protected?" builtin":" pending"))+'" data-act="host" data-sk="'+esc(r.name)+
+      '<label class="cb'+(r.canonical?" on":(r.builtin?" builtin":" pending"))+'" data-act="host" data-sk="'+esc(r.name)+
         '" title="'+(r.canonical?"已托管：点击从真源移出（内容保留，可恢复）"
-                     :(r.protected?"该 agent 的内置技能，受保护不托管":"未托管：点击收进真源"))+'"></label>'+
+                     :(r.builtin?"该 agent 的内置技能，受保护不托管":(r.source_only?"来自只读来源：点击收进真源并分发（原目录保持不动）":"未托管：点击收进真源")))+'"></label>'+
       '<div class="sktxt" data-act="detail" data-sk="'+esc(r.name)+'">'+
         '<b>'+hl(r.name, S.q)+'</b>'+
         (r.drift?'<span class="tag bad">'+r.variant_count+' 个版本</span>':'')+
         (r.ignored?'<span class="tag">已停用</span>':'')+
-        (!r.canonical && r.protected?'<span class="tag" title="agent 自带，不参与托管">内置</span>':'')+
+        (!r.canonical && r.builtin?'<span class="tag" title="agent 自带，不参与托管">内置</span>':'')+
+        (!r.canonical && r.source_only?'<span class="tag" title="只读来源，可单向取用">来源</span>':'')+
         '<span class="desc">'+hl((r.meta.desc||"").slice(0,90), S.q)+'</span>'+
         '<span class="src">· '+fmtB(r.bytes_total)+'</span>'+
       '</div></div></td>'+cells+
@@ -434,7 +435,7 @@ document.addEventListener("click", async ev => {
 
   if (act === "cell"){
     const sk = t.dataset.sk, ag = t.dataset.ag, on = t.dataset.on === "true";
-    if (t.classList.contains("ro")) return toast("bad","只读来源","CC Switch 目录不参与分发");
+    if (t.classList.contains("ro")) return toast("bad","只读来源",(S.state.agents.find(a=>a.id===ag)||{}).name+" 是只读来源，不参与分发");
     const row = S.state.skills.find(x => x.name === sk);
     const want = !on;                       // 目标状态：true=装上，false=收回
     if (!want && !row.canonical)
@@ -444,7 +445,7 @@ document.addEventListener("click", async ev => {
   if (act === "host"){
     const sk = t.dataset.sk;
     const row = S.state.skills.find(x => x.name === sk);
-    if (row && !row.canonical && row.protected)
+    if (row && !row.canonical && row.builtin)
       return toast("bad", "内置技能", sk + " 是 agent 自带的受保护技能，不纳入真源托管");
     t.classList.add("busy");
     try{

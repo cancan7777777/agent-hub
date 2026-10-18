@@ -33,13 +33,13 @@ AGENTS = [
                   dict(path=os.path.join(USERPROFILE, ".codex", "config.toml"), kind="toml_plugins")],
          note="原生读取 .codex\\skills 与 .agents\\skills 两处。"),
 
-    dict(id="claude", name="Claude Code（CLI）", vendor="Anthropic", color="#d97757", verified=True,
+    dict(id="claude", name="Claude Code", vendor="Anthropic", color="#d97757", verified=True,
          icon='<path d="M12 3c2.5 3 4 5.5 4 8a4 4 0 0 1-8 0c0-2.5 1.5-5 4-8Z"/><path d="M9 21h6"/>',
          skills=[dict(path=os.path.join(USERPROFILE, ".claude", "skills"), role="agent")],
          mcp=dict(path=os.path.join(USERPROFILE, ".claude.json"), format="json", key="mcpServers"),
          plugins=[dict(path=os.path.join(USERPROFILE, ".claude", "plugins", "installed_plugins.json"), kind="claude_json")],
-         note="终端里的 claude 命令。技能读 ~/.claude/skills 与 ~/.agents/skills；"
-              "与 Claude 桌面版互不可见。"),
+         note="终端 claude 命令与 Claude 桌面版的 Code 模式共用 ~/.claude/skills，二者技能与插件互通；"
+              "桌面版 Cowork 模式隔离，见另一条。"),
     dict(id="cursor", name="Cursor", vendor="Anysphere", color="#5b8def", verified=False,
          icon='<path d="M4 3l14 8-6 1.6L9.6 19Z"/>',
          skills=[dict(path=os.path.join(USERPROFILE, ".cursor", "skills"), role="agent")],
@@ -143,13 +143,13 @@ def _claude_desktop_skill_dirs():
 
 
 CLAUDE_DESKTOP = dict(
-    id="claude-desktop", name="Claude 桌面版", vendor="Anthropic", color="#c15b3c",
+    id="claude-desktop", name="Claude Cowork", vendor="Anthropic", color="#c15b3c",
     icon='<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
     verified=True, read_only=True,
     skills=[dict(path=p, role="source") for p in _claude_desktop_skill_dirs()],
     mcp=None, plugins=[],
-    note="桌面版技能由 app 托管（路径含会话 UUID，不写入）；"
-         "与 Claude Code 的 ~/.claude/skills 互不可见。")
+    note="Claude 桌面版的 Cowork 模式：独立 Linux 虚拟机 + 会话私有目录（路径含 UUID，不写入）。"
+         "内置技能作为只读来源展示，Code 模式请用 Claude Code / 桌面 Code 条目。")
 
 def refresh_desktop_sources():
     """桌面端技能路径含会话 UUID，会随会话变化；每次扫描前重新发现。"""
@@ -162,6 +162,19 @@ def refresh_desktop_sources():
 
 # 只读来源：会被扫描展示，但不参与分发与写入
 SOURCES = [SOURCE_ONLY, CLAUDE_DESKTOP]
+
+# 界面里的 agent 排列顺序（可写 agent 在前，只读来源在后）。
+# 前几列固定为最常用的几个，其余按登记顺序补齐。
+_ORDER = ["codex", "claude", "claude-desktop", "antigravity", "trae",
+          "workbuddy", "dsh", "cursor", "gemini", "opencode", "pi",
+          "qoder", "zcode", "ccswitch"]
+
+
+def ordered_agents() -> list:
+    """按 _ORDER 排好序的全部 agent（含只读来源），供界面统一调用。"""
+    all_agents = AGENTS + SOURCES
+    idx = {aid: i for i, aid in enumerate(_ORDER)}
+    return sorted(all_agents, key=lambda a: (idx.get(a["id"], len(idx)), a["id"]))
 
 
 def load_state() -> dict:

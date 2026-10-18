@@ -102,12 +102,14 @@ def scan() -> dict:
         row["drift"] = row["variant_count"] > 1
         row["copies"] = sum(1 for l in row["locations"].values()
                             if l["kind"] == "real" and l["role"] != "source")
-        row["agents_present"] = sorted([a for a, x in row["by_agent"].items() if x["present"] and not x["read_only"]])
+        row["agents_present"] = sorted([a for a, x in row["by_agent"].items() if x["present"]])
         row["agent_count"] = len(row["agents_present"])
         # 只出现在受保护目录 / 只读来源里的技能，属于 agent 内置，不算待托管
         locs = list(row["locations"].values())
-        row["protected"] = bool(locs) and all(
-            ((l["agent"], name) in protected_set) or l["role"] == "source" for l in locs)
+        row["builtin"] = bool(locs) and all((l["agent"], name) in protected_set for l in locs)
+        # 只出现在只读来源（CC Switch / Claude Cowork）里的技能可单向取用：允许托管，不计入待收敛
+        row["source_only"] = bool(locs) and all(l["role"] == "source" for l in locs)
+        row["protected"] = row["builtin"] or row["source_only"]
         row["ok"] = (name in canon and row["copies"] == 0) or (name not in canon and row["copies"] <= 1 and not row["drift"])
         matrix[name] = row
 

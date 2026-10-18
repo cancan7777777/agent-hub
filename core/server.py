@@ -90,7 +90,7 @@ def build_state(force=False, since=0.0) -> dict:
         view_by_agent.setdefault(v["agent"], []).append(v)
 
     agent_meta = []
-    for a in registry.AGENTS + registry.SOURCES:
+    for a in registry.ordered_agents():
         dirs = []
         for v in view_by_agent.get(a["id"], []):
             k = link_kind(os.path.abspath(v["dir"]))
@@ -99,7 +99,8 @@ def build_state(force=False, since=0.0) -> dict:
                              count=v["count"],
                              target=read_target(v["dir"]) if k in ("junction", "symlink") else None))
         mspec = a.get("mcp") or {}
-        cnt = len({n for n, r in matrix.items() if a["id"] in r.get("agents_present", [])})
+        cnt = len({n for n, r in matrix.items()
+                   if r.get("by_agent", {}).get(a["id"], {}).get("present")})
         agent_meta.append(dict(id=a["id"], name=a["name"], vendor=a["vendor"], color=a["color"],
                                icon=a.get("icon", ""),
                                verified=a.get("verified", False), read_only=a.get("read_only", False),
@@ -157,7 +158,7 @@ def mcp_view() -> dict:
     master = mcp_hub.load_master()
     disabled = set(master.get("disabled", []))
     agents = []
-    for a in registry.AGENTS:
+    for a in registry.ordered_agents():
         spec = a.get("mcp")
         if not spec:
             continue
@@ -215,16 +216,18 @@ def skill_row(name: str) -> dict:
             for pn in sd.get("protect", []):
                 protected_set.add((a["id"], pn))
     loc_list = list(locations.values())
-    is_protected = bool(loc_list) and all(
-        ((l["agent"], name) in protected_set) or l["role"] == "source" for l in loc_list)
+    is_builtin = bool(loc_list) and all((l["agent"], name) in protected_set for l in loc_list)
+    is_source_only = bool(loc_list) and all(l["role"] == "source" for l in loc_list)
+    is_protected = is_builtin or is_source_only
     hashes = {l["hash"] for l in locations.values()}
     if chash:
         hashes.add(chash)
     copies = sum(1 for l in locations.values() if l["kind"] == "real" and l["role"] != "source")
     total = (dir_fingerprint(canon)["bytes"] if chash else 0)
-    present = sorted(a for a, x in by_agent.items() if not x["read_only"])
+    present = sorted(a for a, x in by_agent.items() if x["present"])
     return dict(name=name, canonical=bool(chash), canonical_hash=chash,
                 ignored=name in ignored, protected=is_protected,
+                builtin=is_builtin, source_only=is_source_only,
                 locations=locations, by_agent=by_agent,
                 variant_count=len(hashes), drift=len(hashes) > 1, copies=copies,
                 bytes_total=total, agents_present=present, agent_count=len(present),

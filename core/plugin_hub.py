@@ -60,7 +60,9 @@ def _dir_list(path: str) -> list:
 def scan_plugins() -> dict:
     by_agent = {}
     names = {}
-    for a in registry.AGENTS:
+    for a in registry.ordered_agents():
+        if not a.get("plugins"):
+            continue
         items = []
         for spec in a.get("plugins") or []:
             p = spec["path"]

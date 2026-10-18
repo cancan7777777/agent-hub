@@ -27,7 +27,8 @@ agent-hub 的做法是**只保留一份真源**，其余位置全部换成目录
 | Agent | 技能目录 | MCP 配置 |
 |---|---|---|
 | Codex / ChatGPT | `~/.codex/skills` | `~/.codex/config.toml` |
-| Claude Code | `~/.claude/skills` | `~/.claude.json` |
+| Claude Code / 桌面 Code | `~/.claude/skills` | `~/.claude.json` |
+| Claude 桌面版 Cowork | 会话私有目录（只读来源） | 桌面版自管，不写入 |
 | Cursor | `~/.cursor/skills` | `~/.cursor/mcp.json` |
 | Gemini CLI | `~/.gemini/config/skills` | `~/.gemini/config/mcp_config.json` |
 | Antigravity | `~/.gemini/antigravity/builtin/skills` | 同 Gemini CLI |
@@ -43,46 +44,71 @@ agent-hub 的做法是**只保留一份真源**，其余位置全部换成目录
 `~/.agents/skills` 是 [Agent Skills](https://agentskills.io) 规范的标准位置，
 Codex、Gemini CLI、Pi 等都会原生读取它。
 
-## Claude 桌面版与 Claude Code 能共用吗
+## Claude Code、桌面 Code 与 Cowork 的共用关系
 
-**结论：技能不自动共用，插件也不共用。** 两者虽然都是 Claude，但读取的是完全不同的目录。
+**结论：Claude Code（CLI）和桌面版 Code 模式共用 `~/.claude`，技能与插件自动互通；Cowork 模式是隔离的。**
 
-实测依据（Claude 桌面版 2.x，local agent mode）：
+实测依据（Claude 桌面版 2.42304.0 / CLI 2.1.299）：
 
-| | Claude Code（CLI） | Claude 桌面版 |
+| | Claude Code（CLI） | 桌面版 Code 模式 | 桌面版 Cowork 模式 |
+|---|---|---|---|
+| 配置目录 | `~/.claude` | `~/.claude`（同一份） | 会话私有 `.claude`，由 `CLAUDE_CONFIG_DIR` 指定 |
+| 技能位置 | `~/.claude/skills` | 同上（复用 CLI 加载器） | `%LOCALAPPDATA%\Claude-3p\local-agent-mode-sessions\skills-plugin\<UUID>\<UUID>\skills` |
+| 运行环境 | 本机进程 | 本机进程，工作目录是真实 Windows 路径 | 独立 Linux 虚拟机（`rootfs.vhdx`），工作目录 `/home/…` |
+| Hub 分发结果 | 可用 | 可用（与 CLI 同一份，无需重复分发） | 不可用（只读来源，可单向取用） |
+
+判定依据：
+- Code 模式会话的 `cliSessionId` 落在 `~/.claude/projects/`，工作目录是 `D:\…` 这样的真实 Windows 路径，
+  启动日志写着 `[CCD] 2 ~/.claude plugin(s) left to the CLI's own loader (not passed as --plugin-dir)`，
+  全程没有 `CLAUDE_CONFIG_DIR` 覆盖 —— 说明它就是在本机跑 Claude Code 的加载器。
+- 只有 Cowork 会话的日志里才出现 `CLAUDE_CONFIG_DIR: …\local-agent-mode-sessions\…\.claude`，
+  工作目录也是 Linux VM 的 `/home/…`。
+
+### 为什么 Codex / Claude Code / 桌面 Code 能共用
+
+技能格式都遵循 [Agent Skills](https://agentskills.io) 规范，一个含 `SKILL.md` 的目录谁都能读，
+差别只在「各家去哪个目录找」：
+
+| Agent | 是否原生读 `~/.agents/skills` | 原生技能目录 |
 |---|---|---|
-| 配置目录 | `~/.claude` | 会话私有目录，由 `CLAUDE_CONFIG_DIR` 指定 |
-| 技能位置 | `~/.claude/skills`、`~/.agents/skills` | `%LOCALAPPDATA%\Claude-3p\local-agent-mode-sessions\skills-plugin\<UUID>\<UUID>\skills` |
-| 运行环境 | 本机进程 | 独立 Linux 虚拟机（`rootfs.vhdx`），会话工作目录是 `/home/…` |
-| 插件机制 | marketplace / `@skills-dir` / `@inline` | app 自带的 `anthropic-skills` 插件，用户不接管 |
+| Codex | 是 | `~/.codex/skills`、`~/.agents/skills` |
+| Claude Code / 桌面 Code | 否 | `~/.claude/skills` |
+| Gemini CLI / Pi | 是 | 各自目录 + `~/.agents/skills` |
 
-桌面版内嵌的其实也是一个 `claude.exe`，但它被显式指向了自己的配置目录，
-所以放进 `~/.claude/skills` 的东西桌面版看不到，反之亦然。
+agent-hub 不去依赖各家是否读同一个目录，而是**在每个 agent 的原生目录里放一个目录联接，指回 `data/skills` 这一份真源**。
+所以即使 Claude Code 不读 `~/.agents/skills`，它照样能读到同一个技能 —— 因为 `~/.claude/skills` 下面那个
+目录本身就是真源的别名。桌面版 Code 模式直接复用 Claude Code 的加载器，也就跟着看到了。
 
-### 那能做什么
+这才是「装一次、处处可用」的真实原理：**真源唯一 + 原生目录联接**，而不是指望所有 agent 都读同一个路径。
+个别 agent 若原生支持 `~/.agents/skills`，hub 会去掉重复镜像，避免同一技能被注入两次。
 
-**技能可以单向搬运** —— 桌面版那个 `skills` 目录本身就是标准的 Claude Code 插件结构
-（含 `.claude-plugin/plugin.json`），本工具已支持把它里面的技能取出并分发给其他 agent：
+Cowork 不在这个圈子里：它跑在独立 Linux VM 里，只读 app 下发的插件目录，
+既读不到 `~/.claude/skills`，也读不到 `~/.agents/skills`。Hub 把它登记为只读来源 ——
+可以从中取技能出来分发给别人，但不往里写。
 
-1. 技能页找到来自「Claude 桌面版」的那几行（`docx`、`pdf`、`xlsx`、`pptx`、`frontend-design` 等）
-2. 点行首方框托管 → 内容复制进真源，桌面版原目录保持不动
+### Cowork 的内置技能可以单向取用
+
+Cowork 那个 `skills` 目录本身就是标准的 Claude Code 插件结构（含 `.claude-plugin/plugin.json`），
+本工具已支持把它里面的技能取出并分发给其他 agent：
+
+1. 技能页找到来自「Claude 桌面版 · Cowork」的那几行（`docx`、`pdf`、`xlsx`、`pptx`、`frontend-design` 等）
+2. 点行首方框托管 → 内容复制进真源，Cowork 原目录保持不动
 3. 之后就能像普通技能一样分发给 Claude Code、Codex 等任意 agent
 
-注意桌面版自带技能里有几个依赖它自己的运行时（`schedule` 定时任务、`explain-usage`、
-`setup-cowork`、`consolidate-memory`），搬到别的 agent 后指令能读，但调用的工具不存在，
-这类建议不要托管。纯知识型的（`docx`、`pdf`、`pdf-reading`、`xlsx`、`pptx`、`frontend-design`）搬过去是可用的。
-
-**反方向同理**：想让 Claude Code 的技能出现在桌面版里，目前没有用户可写的入口 ——
-桌面版的技能目录由 app 托管且路径含会话 UUID，写进去随时会被覆盖。
+注意其中几个依赖 Cowork 自身运行时（`schedule` 定时任务、`explain-usage`、
+`setup-cowork`、`consolidate-memory`），搬到别的 agent 后指令能读、但调用的工具不存在，
+这类建议不要托管。纯知识型的（`docx`、`pdf`、`pdf-reading`、`xlsx`、`pptx`、`frontend-design`）搬过去可用。
 
 **官方的 `@synced` 通道对你无效**：Claude Code 会把你在 claude.ai 账户开启的插件同步进终端，
 但官方文档明确排除了一类会话 —— 凭证由 `ANTHROPIC_AUTH_TOKEN` / 网关提供的情况。
 你当前通过 CC Switch 走本地网关，正好属于这一类，所以同步插件不会加载。
 
-### 插件为什么更不行
+### 插件情况
 
-桌面版的插件是 app 下发到会话目录里的，Claude Code 的插件走 `installed_plugins.json` + 缓存，
-两边的清单、路径、校验方式都不一样。本工具的插件页只做跨 agent 盘点，不写入。
+- **CLI 与桌面 Code 模式**：插件交给同一个 CLI 加载器（日志原文 `left to the CLI's own loader`），
+  所以 `~/.claude/plugins` 下已启用的插件在 Code 模式同样可用。
+- **Cowork**：插件由 app 下发到会话目录，与 CLI 的 `installed_plugins.json` + 缓存是两套东西，
+  路径与校验方式都不同。本工具的插件页对 Cowork 只做盘点，不写入。
 
 ---
 
