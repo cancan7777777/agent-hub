@@ -143,8 +143,10 @@ function renderShell(){
   }
 }
 function setHeader(title, sub, actions){
+  const subtitle = String(sub || "").trim();
   $("#title").textContent = title;
-  $("#subtitle").textContent = sub;
+  $("#subtitle").textContent = subtitle;
+  $("#subtitle").hidden = !subtitle;
   $("#actions").innerHTML = actions || "";
 }
 async function switchTab(id){
@@ -162,7 +164,7 @@ async function refreshAll(fresh){
 /* 真源目录：状态未加载时不显示具体路径 */
 function canonDir(){ return (S.state && S.state.canonical_dir) || "本机"; }
 const HEADERS = {
-  skills: ["技能分发", "单一真源在 {canon}，各 agent 目录用目录联接指向它。点行首方框托管，点方格单独为某个 agent 开关。"],
+  skills: ["技能分发", ""],
   mcp:    ["MCP 服务", "Hub 持有一份主列表，按各家原生格式分发：Codex 写 config.toml，其余写各自 mcp.json。写入前自动备份。"],
   plugin: ["插件盘点", "各工具插件格式互不兼容（清单/缓存/签名机制不同），此页只做跨 agent 盘点与对照，不做写入。"],
   hub:    ["收敛中心", "把散落在各 agent 的副本合并成单一真源：先备份 zip，再删副本，最后就地建目录联接。"],
