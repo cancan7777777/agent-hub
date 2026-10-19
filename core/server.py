@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import registry, scan, consolidate, mcp_hub, plugin_hub, watcher
+import registry, scan, consolidate, mcp_hub, plugin_hub, watcher, autostart
 import fsutil
 from fsutil import (dir_fingerprint, link_kind, make_junction, remove_path, read_target,
                     copy_tree, USERPROFILE)
@@ -17,6 +17,7 @@ fsutil.set_cache_file(registry.FPCACHE)
 _LOCK = threading.RLock()
 _CACHE: dict = {"scan": None, "ts": 0.0}
 _JOBS: dict = {}
+_PORT = [0]           # 实际监听端口，自启动状态要用它回显
 
 
 def get_scan(force=False, max_age=6.0):
@@ -154,7 +155,8 @@ def build_state(force=False, since=0.0) -> dict:
                            bytes_wasted=sum(r["bytes_total"] for r in matrix.values() if r["drift"]),
                            backups=n_bk, backup_bytes=sz_bk),
                 last_apply=st.get("last_apply"), generated=s["generated"],
-                watch=watcher.status(since))
+                watch=watcher.status(since),
+                autostart=autostart.status(_PORT[0] or autostart.DEFAULT_PORT))
 
 
 def mcp_view() -> dict:
@@ -461,6 +463,13 @@ CT = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-
       ".json": "application/json; charset=utf-8", ".ico": "image/x-icon"}
 
 
+class HubServer(ThreadingHTTPServer):
+    """Windows 的 SO_REUSEADDR 语义是"允许抢占已监听端口"，两份实例会同时写配置。
+    关掉它，端口被占就报错，由调用方决定是安静退出还是换端口。"""
+    allow_reuse_address = False
+    daemon_threads = True
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "AgentHub/1.0"
 
@@ -504,6 +513,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, mcp_view())
             if u == "/api/plugins":
                 return self._send(200, plugin_hub.scan_plugins())
+            if u == "/api/autostart":
+                return self._send(200, autostart.status(_PORT[0] or autostart.DEFAULT_PORT))
             if u == "/api/watch":
                 return self._send(200, watcher.status(float(q.get("since", ["0"])[0] or 0)))
             if u == "/api/plan":
@@ -557,6 +568,10 @@ class Handler(BaseHTTPRequestHandler):
                 if u == "/api/autohost":
                     watcher.set_auto_host(bool(b.get("on")))
                     return self._send(200, dict(ok=True, auto_host=watcher.AUTO_HOST))
+                if u == "/api/autostart":
+                    r = autostart.set_enabled(bool(b.get("on")),
+                                              _PORT[0] or autostart.DEFAULT_PORT)
+                    return self._send(200 if r.get("ok") else 500, r)
                 if u == "/api/default_install":
                     ids = registry.set_default_install(b.get("agents"))
                     return self._send(200, dict(ok=True, default_install=ids))
@@ -640,16 +655,85 @@ def free_port(preferred=8765):
     return 0
 
 
+def _pin_console():
+    """pythonw.exe 没有控制台，stdout/stderr 会是 None；补成日志文件，
+    否则开机自启失败时什么都查不到。"""
+    try:
+        os.makedirs(registry.LOGS, exist_ok=True)
+        if sys.stdout is None:
+            sys.stdout = open(os.path.join(registry.LOGS, "hub.out.log"), "a",
+                              encoding="utf-8", errors="replace", buffering=1)
+        if sys.stderr is None:
+            sys.stderr = open(os.path.join(registry.LOGS, "hub.err.log"), "a",
+                              encoding="utf-8", errors="replace", buffering=1)
+    except Exception:
+        pass
+
+
+def already_running(port: int) -> bool:
+    """端口上是否已经有一份 hub 在服务。用接口探活，不误伤别的程序。"""
+    import urllib.request
+    if not port:
+        return False
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/autostart",
+                                    timeout=1.5) as r:
+            return b'"supported"' in r.read(4096)
+    except Exception:
+        return False
+
+
+def bind_server(port: int):
+    """优先用给定端口；被别的程序占住则退回空闲端口。已有实例则返回 None。"""
+    if already_running(port):
+        print(f"已有一份实例在端口 {port} 运行，本次启动跳过。", flush=True)
+        return None
+    try:
+        return HubServer(("127.0.0.1", port), Handler)
+    except OSError as e:
+        alt = free_port()
+        if alt == port or already_running(alt):
+            print(f"端口 {port} 不可用（{e}），且无可用端口，退出。", flush=True)
+            return None
+        print(f"端口 {port} 不可用（{e}），改用 {alt}。", flush=True)
+        try:
+            return HubServer(("127.0.0.1", alt), Handler)
+        except OSError:
+            return None
+
+
+def parse_args(argv):
+    """解析启动参数：端口（可省略）+ --no-browser（开机自启用，不弹浏览器）。"""
+    port = None
+    browser = True
+    for a in argv:
+        if a == "--no-browser":
+            browser = False
+        elif a in ("--browser", "-b"):
+            browser = True
+        else:
+            try:
+                port = int(a)
+            except ValueError:
+                print(f"忽略无法识别的参数：{a}", flush=True)
+    return (port if port is not None else free_port()), browser
+
+
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else free_port()
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    _pin_console()
+    port, open_browser = parse_args(sys.argv[1:])
+    srv = bind_server(port)
+    if srv is None:
+        return
+    _PORT[0] = srv.server_address[1]
+    port = _PORT[0]                  # 可能已回退到别的端口，后面一律以实际值为准
     if os.environ.get("HUB_NO_WATCH") != "1":
         watcher.reconcile_mcp()      # 启动即吸收各 agent 已有配置
         watcher.reconcile_skills()   # 启动即吸收未托管的散落技能
         watcher.start(2.0)
     url = f"http://127.0.0.1:{port}/"
     print(f"AI Agent Hub  ->  {url}", flush=True)
-    if os.environ.get("HUB_NO_BROWSER") != "1":
+    if open_browser and os.environ.get("HUB_NO_BROWSER") != "1":
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()

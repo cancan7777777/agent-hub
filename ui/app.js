@@ -1,7 +1,7 @@
 /* ================= AI AGENT HUB · 控制台（简洁版） ================= */
 const S = { tab:"skills", state:null, mcp:null, plugins:null, plan:null,
             q:"", qm:"", qp:"", qh:"", agent:"", driftOnly:false, sel:new Set(), busy:false,
-            rev:null, lastNoticeTs:0, autoHost:true, skillScroll:null, mcpScroll:null };
+            rev:null, lastNoticeTs:0, autoHost:true, autoStart:false, busyAuto:false, skillScroll:null, mcpScroll:null };
 
 const $  = (s,r)=> (r||document).querySelector(s);
 const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
@@ -159,6 +159,7 @@ async function refreshAll(fresh){
   S.state = await api("/api/state"+(fresh?"?fresh=1":""));
   /* 首屏就要按服务端的真实开关上色，不能等轮询 */
   if (S.state.watch && typeof S.state.watch.auto_host === "boolean") S.autoHost = S.state.watch.auto_host;
+  if (S.state.autostart) S.autoStart = !!S.state.autostart.enabled;
   renderShell(); await render();
 }
 /* 真源目录：状态未加载时不显示具体路径 */
@@ -171,9 +172,11 @@ const HEADERS = {
 };
 async function render(keepScroll){
   const v = $("#view");
-  /* 页面有两层滚动：外层 #view 与表格容器 .mx-wrap，重建时都要保住 */
+  /* 页面有两层滚动：外层 .main（#view 本身不滚，overflow 是 visible）
+     与表格容器 .mx-wrap，重建时都要保住，否则点一下按钮就跳回顶部 */
+  const outer = $(".main") || v;
   const oldWrap = v.querySelector(".mx-wrap");
-  const y  = keepScroll ? v.scrollTop : 0;
+  const y  = keepScroll ? outer.scrollTop : 0;
   const wy = keepScroll && oldWrap ? oldWrap.scrollTop : 0;
   const wx = keepScroll && oldWrap ? oldWrap.scrollLeft : 0;
   const H = HEADERS[S.tab];
@@ -186,18 +189,22 @@ async function render(keepScroll){
   const btnDefault = S.tab==="skills"
     ? '<button class="btn amber" data-act="default-install" title="设置新增技能默认装给哪几个 agent">'
       + svg("gear")+'默认安装 <b>'+(S.state.default_install||[]).length+'</b> 家</button>' : "";
+  const btnBoot = (S.tab==="skills"||S.tab==="mcp")
+    ? '<button class="btn '+(S.autoStart?"on":"off")+'" data-act="toggle-boot" '
+      + 'title="登录 Windows 后自动在后台启动本控制台，不用手动跑脚本">'
+      + '<i class="dot"></i>开机自启·'+(S.autoStart?"开":"关")+'</button>' : "";
   const btnRescan = '<button class="btn" data-act="rescan">'+svg("refresh")+'重新扫描</button>';
   const btnImport = (S.tab==="skills" && S.state && S.state.stats.unhosted)
     ? '<button class="btn" data-act="import-all" title="把各 agent 里散落、还没进真源的技能一次性收进真源">'
       + svg("bolt")+'一键导入 ('+S.state.stats.unhosted+')</button>' : "";
-  setHeader(H[0], H[1].replace("{canon}", canonDir()), btnAuto + btnDefault + btnImport + btnAdd + btnRescan);
+  setHeader(H[0], H[1].replace("{canon}", canonDir()), btnAuto + btnBoot + btnDefault + btnImport + btnAdd + btnRescan);
   if (S.tab==="skills")      v.innerHTML = skillsHTML();
   else if (S.tab==="mcp")    v.innerHTML = await mcpHTML();
   else if (S.tab==="plugin") v.innerHTML = await pluginsHTML();
   else                       v.innerHTML = hubHTML();
   bindView();
   bindTabSearch();
-  v.scrollTop = y;
+  outer.scrollTop = y;
   const nw = v.querySelector(".mx-wrap");
   if (nw){ nw.scrollTop = wy; nw.scrollLeft = wx; }
 }
@@ -420,6 +427,30 @@ function namesForIds(ids){
 }
 function defaultNames(){ return namesForIds(S.state && S.state.default_install || []); }
 
+/* 开机自启：写/删当前用户的启动项，服务端返回真实注册状态，不靠前端猜 */
+async function toggleBoot(){
+  if (S.busyAuto) return;
+  S.busyAuto = true;
+  const want = !S.autoStart;
+  render(true);
+  try {
+    const r = await api("/api/autostart", {on: want});
+    S.autoStart = !!r.enabled;
+    if (r.ok) {
+      toast("ok", "开机自启已" + (want?"开启":"关闭"),
+            want ? "下次登录 Windows 会自动在后台启动，当前窗口不必重开" : "已移除启动项，服务本身不受影响，可继续手动运行");
+    } else {
+      toast("bad", "未能开启开机自启", r.error || "未知原因");
+    }
+  } catch (e) {
+    S.autoStart = !want;
+    toast("bad", "操作失败", e.message);
+  } finally {
+    S.busyAuto = false;
+    render(true);
+  }
+}
+
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("[data-act]");
   if (!t) return;
@@ -431,8 +462,9 @@ document.addEventListener("click", async ev => {
     S.autoHost = !S.autoHost;
     await api("/api/autohost", {on: S.autoHost});
     toast("ok", "自动同步已" + (S.autoHost?"开启":"关闭"), S.autoHost?"外部新增技能会自动收进真源，并装到 "+defaultNames():"需手动点重新扫描");
-    render(); return;
+    render(true); return;
   }
+  if (act === "toggle-boot"){ await toggleBoot(); return; }
   if (act === "add-skill"){ openAddDialog(); return; }
   if (act === "default-install"){ openDefaultDialog(); return; }
   if (act === "default-save"){ await saveDefaultInstall(t); return; }
@@ -640,7 +672,7 @@ async function saveDefaultInstall(btn){
     S.state.default_install = r.default_install;
     closeDrawer();
     toast("ok","已保存默认安装范围", (r.default_install||[]).length ? defaultNames() : "新技能只留在原处，不再自动分发");
-    render();
+    render(true);
   }catch(e){ toast("bad","保存失败", e.message); }
   finally{ if (btn) btn.classList.remove("busy"); }
 }

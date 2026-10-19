@@ -9,6 +9,9 @@ data/backups/
 data/fingerprint.cache.json
 data/state.json
 data/mcp.json
+
+# 旧版开机自启留下的中转脚本（现已直接写启动项，不再需要）
+data/autostart.vbs
 logs/
 *.log
 *.bak

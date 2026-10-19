@@ -19,6 +19,7 @@ agent-hub 的做法是**只保留一份真源**，其余位置全部换成目录
 - **单个开关** — 矩阵里每个方格独立控制某个 agent 要不要这个技能
 - **MCP 统一分发** — 主列表一份，按各家原生格式写入：Codex 写 `config.toml`，OpenCode 写 `opencode.jsonc`，其余写各自 `mcp.json`
 - **外部改动自动同步** — 后台监听各 agent 目录与配置文件，你在任何一家新增技能或 MCP，界面约 2 秒内自动发现并纳入管理
+- **开机自启** — 技能页顶部「开机自启」一键写入当前用户的启动项，登录后台常驻，不必每次手动跑脚本
 - **三页搜索** — 技能 / MCP / 插件都支持多关键词检索（空格为 AND）与命中高亮
 - **插件盘点** — 跨 agent 列出已安装插件与来源市场（各家插件格式互不兼容，此页只读）
 - **安全可回滚** — 任何被替换的目录先压成 zip 存进 `data/backups/`；写 `config.toml` 采用最小文本编辑 + 回读校验，失败自动回滚
@@ -142,6 +143,28 @@ python core/server.py
 新增的技能只会自动装到「默认安装」里勾选的 agent（外加技能原本所在的那一家）。
 装得越少，各家启动时要读的技能清单越短；其余 agent 要用，在矩阵里单独点格子即可。
 
+### 开机自启（Windows）
+
+手动跑脚本只在当前这次开机有效，重启后服务就没了，浏览器会报 `127.0.0.1 拒绝连接`。
+技能页或 MCP 页顶部的「开机自启」按钮可以解决：
+
+- **开** — 把 `pythonw.exe + core/server.py + --no-browser` 写进
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，登录后服务自动在后台常驻
+- **关** — 删掉该启动项
+- 只动当前用户的启动项，不注册系统服务，因此**不需要管理员权限**，改完也**不必重启**即可生效
+- 开机时不抢着弹浏览器（`--no-browser`），你自己在地址栏开 `127.0.0.1:8765` 就是
+- 服务带单实例保护：已经有一份在跑时，第二次启动会检测到并安静退出，不会两份同时写配置
+
+命令行等价操作（不调界面也能开关）：
+
+```powershell
+python -c "import sys; sys.path.insert(0,'core'); import autostart; print(autostart.enable())"
+python -c "import sys; sys.path.insert(0,'core'); import autostart; print(autostart.disable())"
+python core/autostart.py        # 查看当前注册状态
+```
+
+macOS / Linux 没有这个按钮：直接 `python core/server.py`，或用系统自带的登录项/ systemd 用户服务。
+
 ## 目录结构
 
 ```
@@ -158,6 +181,7 @@ agent-hub/
 │   ├── jsonc_patch.py         保注释的 JSONC 定点编辑
 │   ├── plugin_hub.py          插件盘点
 │   ├── watcher.py             外部改动监听与自动归集
+│   ├── autostart.py           开机自启（当前用户启动项）
 │   └── fsutil.py              指纹缓存 / 联接 / 安全删除
 ├── ui/                      前端（无框架，字体本地化可离线运行）
 ├── data/
