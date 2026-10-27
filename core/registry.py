@@ -3,8 +3,11 @@ from __future__ import annotations
 import json, os
 from fsutil import USERPROFILE, expand
 
-# 项目根目录由本文件位置推导，克隆到任意路径都能运行
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 项目根目录由本文件位置推导，克隆到任意路径都能运行；
+# 打包成 exe 后 __file__ 在临时解包目录里，数据会丢，所以允许用
+# AGENTHUB_ROOT 把"数据根"指到真正可写的位置（如 %LOCALAPPDATA%\AgentHub）。
+_ENV_ROOT = os.environ.get("AGENTHUB_ROOT")
+ROOT = os.path.abspath(_ENV_ROOT) if _ENV_ROOT else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE = os.path.join(ROOT, "core")
 DATA = os.path.join(ROOT, "data")
 LOGS = os.path.join(ROOT, "logs")

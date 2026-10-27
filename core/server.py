@@ -12,7 +12,8 @@ from fsutil import (dir_fingerprint, link_kind, make_junction, remove_path, read
 from scan import list_skill_dirs
 fsutil_backup = fsutil.backup_tree
 
-UI = os.path.join(registry.ROOT, "ui")
+# 静态界面目录：打包成 exe 时资源在 _MEIPASS 里，用 AGENTHUB_UI 指过去
+UI = os.environ.get("AGENTHUB_UI") or os.path.join(registry.ROOT, "ui")
 fsutil.set_cache_file(registry.FPCACHE)
 _LOCK = threading.RLock()
 _CACHE: dict = {"scan": None, "ts": 0.0}

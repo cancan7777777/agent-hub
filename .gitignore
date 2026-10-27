@@ -21,3 +21,8 @@ logs/
 .idea/
 Thumbs.db
 .DS_Store
+
+# 桌面版构建产物
+.buildenv/
+build/
+dist/
